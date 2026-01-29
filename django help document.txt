@@ -1,0 +1,19 @@
+python manage.py runserver [ip:port]          启动服务器
+
+python manage.py makemigrations               生成迁移文件
+python manage.py migrate                      执行迁移
+python manage.py showmigrations               显示当前迁移状况
+python manage.py dumpdata > 文件名.json        将数据库内的数据保持到文件名.json中
+python manage.py loaddata 文件名.json          将文件名.json的数据导入数据库中
+
+python manage.py startapp 应用名             创建一个名为应用名的应用
+注意，创建完应用后要在settings.py中将应用添加进去
+
+浏览器->路由urls->视图views-><-(如果需要数据库)模型models-><-数据库
+                         ->(如果需要渲染网页)模板templates->浏览器
+                         ->(如果直接返回数据)浏览器
+
+python manage.py createsuperuser              创建超级管理员的账户和密码
+
+
+

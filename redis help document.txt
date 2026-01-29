@@ -1,0 +1,231 @@
+redis(远程词典服务器)是单线程的，每个命令都具备原子性，支持数据持久化，主从集群，分片(水平分数据)集群
+
+redis-cli [-a password] [-h host] [-p port] [commands]
+
+# redis共有16个库，编号0~15，默认启用0号库
+select 0~15     进入对应库
+
+dbsize      当前库的键数量
+
+flushdb     清空当前库
+flushall    清空所有库
+
+
+keys *?     查找所有同名或符合规则的键
+del k1 k2   删除同名的键
+
+set key [nx(not)] value         或setnx    插入键值对，前提是键不存在，否则不执行
+set key [ex(expire) time] value 或setex    插入键值对并设置有效期
+
+mset        批量插入数据，不支持批量设置有效期。效率高，具有原子性
+mget        批量获得value
+
+exists key         查看键是否存在
+expire key num     给键设置有效期，到期时自动删除
+ttl key            查看键有效期，-1为键存在但没有设置过期时间，-2为键不存在
+
+
+redis的键允许多个单词形成层级结构，使用:隔开。内部存储时会自动根据结构划分不同的包存放数据，方便区分不同项目的相同键名
+redis的有效期只能针对最顶层的键添加，不能针对键的下一级键添加
+redis的值常为经过序列化的json
+
+
+string键类型(字符串，int，float)的value使用字节数组存储，不同类型value的编码方式不同，数值型value可以自增和自减。最大空间不能超过512M
+incr(increment) key   键值自增1
+decr key              键值自减1
+incrby key num        键值自增num(可以为负数)
+incrbyfloat key num   浮点键值自增num(必须设置num)
+
+string键想要修改value必须重新输入整个数据
+
+
+hash键类型也称散列，内部是无序字典，将对象中的每个字段独立存储，可以针对单个字段进行CURD(增删改查)，无法针对字段设置有效期
+hset key field1 value1 field 2 value2    从redis 4.0开始，hset 已经支持多字段设置，功能上已与 hmset 相同
+hsetnx key field value      插入字段，前提是键不存在，否则不执行
+hget key field       hmget key field1 field2
+hgetall key     得到所有值，以field和value交叉返回
+hkeys key       得到所有field
+hvals key       得到所有value
+hincrby key field num
+hdel key field1 field2    删除键的字段
+
+
+list键类型内部是双向链表，支持正向检索与反向检索。元素可以重复，插入和删除快，检索慢
+l/rpush key value1 value2   向列表左侧或右侧插入一个或多个元素
+l/rpop key    移除并返回列表左/右侧的第一个元素，没有则返回nil
+lrange key start end    返回一段范围内的所有元素(包含头和尾)
+bl/rpop key timeout     与l/rpop类似，但在没有元素时等待一定时间，若期间有元素插入则返回插入的元素，否则返回nil
+llen key    返回列表的元素个数
+
+list键可以模拟栈，队列和阻塞队列
+
+
+set键类型内部是值恒定为null的哈希表，无序，元素不可重复，查找快，支持交并差等操作
+sadd key value1 value2   向set添加元素
+srem key value1 value2   移除set中的元素
+scard key   返回集合的元素个数
+smembers    得到所有值
+sismember key value    判断一个元素是否存在于集合中
+sinter key1 key2       返回key1和key2的交集
+sunion key1 key2       返回key1和key2的并集
+sdiff key1 key2        返回key1比key2的差集
+
+
+sortedset键类型是一个可排序的set集合，内部是哈希表+跳表。sortedset中的每一个元素都带有score属性，基于score对元素升序排序。元素不可重复，查找快
+zadd key score1 value1 score2 value2
+zrem key value1 value2
+zcard key
+zscore key value   获取指定元素的score值，不存在则返回nil
+z[rev]rank key value    获取指定元素的[倒序]排名，不存在则返回nil
+z[rev]rangebyscore key min max   获取score在指定范围内的[倒序]元素
+zcount key min max          获取score在指定范围内的元素个数
+zrange key min max          获取排名在指定范围内的元素
+zrevrange key max min       按照score倒序返回指定分数范围内的元素
+zincrby key num value       让指定元素的score自增num
+zinter key1 key2
+zunion key1 key2
+zdiff key1 key2
+
+
+
+单点redis的问题与解决方案：
+数据丢失问题：redis是内存存储，服务重启可能会丢失数据   实现redis数据持久化(RDB和AOF)
+并发能力问题：单节点redis无法满足高并发场景           搭建主从集群，实现读写分离(全量同步和增量同步)
+故障恢复问题：如果主redis宕机，则服务不可用           搭建哨兵集群，实现健康检测和自动恢复
+存储能力问题:redis基于内存，难以存储海量数据          搭建分片集群，利用插槽机制实现动态扩容
+
+
+RDB(redis数据备份文件)，也称为redis数据快照。redis把内存中的所有数据都记录到硬盘，当redis实例故障重启后，从硬盘读取快照文件恢复数据。默认开启
+快照文件默认保存在redis运行目录(dump.rdb)，在redis停机时自动执行一次RDB，在redis启动时自动读取dump.rdb文件
+
+save     由redis主进程执行RDB，会阻塞所有命令
+bgsave   开启子进程异步执行RDB，不会阻塞命令
+
+在redis.conf中可以进行RDB配置
+save timeout count          在timeout秒内，如果至少有count个键被修改，则自动执行bgsave。值设为""表示禁用RDB
+可以设置多个save控制不同时长的自动RDB
+rdbcompression yes/no       执行RDB时是否压缩，默认开启，建议不开启
+dbfilename "file_name.rdb"  RDB文件名称
+dir dir_path                RDB文件保存路径
+
+
+bgsave开始时会对主进程进行fork(创建进程副本)得到子进程，子进程共享主进程的内存数据。完成fork后读取内存数据并写入RDB文件
+
+在linux中所有的进程都无法直接操作物理内存，而是由操作系统给每个进程分配一个虚拟内存。操作系统维护一个虚拟内存与物理内存之间的映射关系表(也称页表)
+子进程fork了主进程的页表，从而共享内存空间，无需拷贝数据，读取内存数据并写入新的RDB文件并替换旧的RDB文件
+
+fork采用copy-on-write技术：子进程备份时，会将共享内存设定为read-only状态
+当主进程读时，访问共享内存；当主进程写时，则会拷贝一份对应键数据，执行写操作，并且之后所有对该键的读操作都位于被拷贝的数据中
+
+RDB的缺点：两次RDB之间的数据有丢失的风险。fork主进程，压缩，执行写RDB文件都比较耗时
+
+
+AOF(追加文件)，也称为命令日志文件。redis将处理的每一个写操作都记录在AOF文件中，当redis实例故障重启后，重新执行AOF中的写命令恢复数据。默认关闭
+在redis.conf中可以进行AOF配置
+appendonly yes/no           是否开启AOF功能
+
+appendfsync always/everysec/no     AOF命令记录频率
+always：每执行一次写命令，立即记录到AOF文件中。性能最低，可靠性最高
+everysec：默认值，写命令执行完先放入AOF缓冲区，然后每隔一秒将缓冲区数据写入AOF文件。最常被采用
+no：写命令执行完先放入AOF缓冲区，由操作系统决定何时将缓冲区数据写入AOF文件。性能最高，可靠性最低。一般使用RDB代替no
+
+appendfilename "file_name.aof"  AOF文件名称
+dir dir_path                    AOF文件保存路径
+
+
+AOF记录命令，文件大小比RDB文件大的多。AOF会记录对同一个键的多次写操作，执行bgrewriteaof命令让AOF执行重写命令，用最少的命令达到相同效果
+在redis.conf中可以进行AOF自动去重配置
+auto-aof-rewrite-percentage num  AOF文件比上次文件大小增长num百分比时自动重写，默认100
+auto-aof-rewrite-min-size   num  AOF文件自动进行重写的体积最小为num，默认64mb
+
+AOF的缺点：AOF体积大，重写时会占用大量CPU和内存资源
+
+
+如果在redis关闭后修改了dbfilename，appendfilename或dir，则数据会因redis找不到RDB或AOF文件而丢失
+如果同时开启了RDB和AOF，默认读取AOF。通常将RDB文件作备份，AOF文件作恢复
+
+
+建立主从集群需要开启RDB，关闭AOF。从库默认为只读模式
+主从第一次同步是全量同步，之后的同步是增量同步
+
+主从集群的全量同步原理：
+1.从库执行replicaof(将当前redis实例配置为另一个redis实例的从库)命令，建立连接，发送replid和offset，请求主库数据同步
+2.判断replid是否与自己一致，如果不一致，返回主库的replid和offset。从库保存并更改自身信息
+3.主库执行bgsave，生成RDB，并将RDB期间的所有命令记录到repl_baklog。将RDB发送到从库
+4.从库清空本地数据，加载RDB文件
+5.在RDB文件发送完成后，主库发送repl_baklog中的命令。从库执行接收到的命令
+
+主库通过replication id和offset判断从库是否进行同步
+replication id：简称replid，是数据集的标记，id一致说明是同一数据集。每一个主库都有唯一的replid，从库会继承主库的replid
+
+offset：偏移量，随着记录在repl_baklog中的增多，offset主键增大。从库完成同步时会记录当前同步的offset
+如果从库的offset小于主库的offset，说明从库数据落后于主库，需要更新
+repl_baklog会记录删除命令，即使主库的数据量少于从库，依然会使主库的offset继续增加
+
+从库进行数据同步，必须向主库声明自己的replid和offset，主库才能判断到底需要同步哪些数据
+replid判断从库是否是第一次同步数据，offset判断从库是否需要同步数据
+
+
+repl_baklog位于缓冲区，实质为大小固定的环型数组，用于进行增量同步
+如果主库和从库的offset差距超过了一圈，导致从库的offset被覆盖，会执行全量同步
+
+主从集群的增量同步原理：
+1.从库执行replicaof命令，建立连接，发送replid和offset，请求主库数据同步
+2.判断replid是否与自己一致，如果一致，返回continue，继续进行数据同步
+3.主库去repl_baklog中获取offset后的数据，发送offset后的命令
+4.从库执行接收到的命令
+
+
+哨兵(sentinel)机制可以实现主从集群的自动恢复。哨兵是一个集群，功能有监控，自动故障恢复和通知
+监控：sentinel会不断检查主库和从库是否按预期工作
+自动故障恢复：如果主库故障，sentinel会将一个从库提升为主库。当原主库恢复后依旧以新主库为主
+通知：sentinel充当redis客户端的服务发现来源，集群故障时会将最新消息推送给redis的客户端
+
+sentinel基于心跳机制检测服务状态，每隔1秒向集群的每个实例发送ping命令
+主观下线：如果某sentinel节点发现某实例未在规定时间内响应，则认为该实例主观下线
+客观下线：若超过指定数量(quorum)的sentinel都认为该实例主观下线，则该实例客观下线。querum的值最好超过sentinel实例的一半
+
+当主库客观下线后，sentinel会依照一定的依据选择从库提升为主库
+1.判断从库与主库断开时间长短，如果超过指定值(down-after-milliseconds * 10)则会排除该从库
+2.判断从库的slave-priority值，越小优先级越高，如果为0则永不参与选举
+3.若slave-priority值一样，判断从库的offset值，越大数据越新，优先级越高
+4.若offset一样，判断从库的运行id大小，越小优先级越高
+
+当选择了一个从库提升为主库，会依照一定的依据转移故障
+1.sentinel向该从库发送slaveof no one命令，使该节点成为主库
+2.sentinel向其他所有从库发送slaveof 新主库地址 新主库端口号，修改配置文件，使这些从库成为新主库的从库，开始从新主库上同步数据
+3.sentinel将故障节点标记为从库，故障恢复后会自动成为新主库的从库
+
+
+分片集群中有多个主库，每个主库保存不同数据。每个主库都可以有多个从库。集群中没有哨兵，主库之间通过ping检测彼此健康状态
+客户端请求可以访问集群任意节点，最终都会被转发到正确节点
+redis-cli -c 表示开启集群模式
+
+redis会将每一个主库映射到0~16383的插槽(hash slot)上，数据键不与节点绑定，而是与插槽绑定
+redis会根据数据键的有效部分计算插槽值：
+键中包含{}，且{}中至少包含一个字符，则{}中的部分是有效部分。若键中不包含{}或{}中没有字符，整个键都是有效部分
+
+数据键会存储到对应插槽的主库上，在{}中写入相同的数据可以使相同类型的键保存在同一主库中
+
+
+cluster failover命令可以手动使集群中的某个主库宕机，切换到执行cluster failover的从库，实现无感知的数据迁移
+手动failover支持三种模式：缺省，force，ta'keover
+缺省：默认流程
+force：忽略了对offset的一致性检验
+takeover：直接标记自己为主库，广播故障转移的结果。忽略数据一致性，忽略故障主库状态和其他主库的意见
+
+
+
+内存击穿：
+
+内存雪崩：
+
+
+
+
+
+
+
+
+
+

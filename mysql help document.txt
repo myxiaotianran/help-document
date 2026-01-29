@@ -1,0 +1,360 @@
+﻿mysql [-u username] [-p password] [-h host] [-P port] [database] [-e "execute"]
+-e可以在mysql客户端执行sql语句并退出，不用连接到mysql数据库再执行，方便使用批处理脚本
+
+
+create table table_name(col_name type [type_attr] [constraint]...) engine=innodb charset=utf8mb4
+
+unsigned 不能为负    auto_increment  自增      distinct  移除重复数据
+check (col_name条件)
+substring(col,start,path)  截取col从start与之后path个字符
+
+case when val1 then new_val1 when val2 then new_val2 else default end;
+case col when val1 then new_val1 when val2 then new_val2 else default end;
+
+
+tinyint 1字节  smallint 2字节  mediumint 3字节  int(显示数值位数) 4字节  bigint 8字节
+float 4字节 9位有效数字    double 8字节 17位有效数字    decimal(总位数，小数位数)
+timestamp：日期类型，比date小，支持自动创建(default currnet_timestamp)与更新
+unsigned int(3)后的数字表示数值的显示位数，unsigned表示为正数
+
+auto_increment导致主键丢失的原因：
+1.使用insert into ... select ...(innoDB不知道要插入多少行主键，以1，2，4，8...的个数申请主键数量)
+2.事务回滚不返还申请的主键
+3.插入失败不返回申请的主键
+
+
+alter table table_name add constraint foreign_name foreign key(col_name) references main_table_name(main_col_name)
+on update no action/cascade on delete no action/cascade;
+
+
+create user "user_name"@"computer_name" identified by "password";   创建用户
+alter user "user_name"@"computer_name" identified with mysql_native_password by "new_password";    更改用户密码
+
+
+窗口函数，也叫OLAP(联机分析处理)函数，可以对数据库数据进行实时分析处理，主要用于数据分析与特定字段分组，数据库优化器可以更好地优化窗口函数的执行计划
+窗口函数在每行数据上都返回计算结果，保持原有行数不变；聚合函数会将多行数据聚合为单行结果，保持原有行数不变需要自链接
+
+窗口函数分为聚合窗口函数与专用窗口函数
+聚合窗口函数与聚合函数的函数名与功能都相同，区别是提供了窗口函数的专属子句使得数据的分析与获取更简便
+有max()，min()，avg()，count()，sum()等
+
+常用专用窗口函数：
+rank()          排名，并列的结果序号可以重复，序号不连续(1,1,3)
+dense_rank()    排名，并列的结果序号可以重复，序号连续(1,1,2)
+row_number()    排名，并列的结果序号不可以重复，序号连续(1,2,3)
+percent_rank()  分布，每行按照(rank-1)/(rows-1)返回0~1之间的数值，表示该行在整体中的相对位置
+cume_dist()     分布，当前行及之前行的行数/rows，表示累计占比
+
+窗口函数 over ([partition by 分组列] [order by 排序列 asc/desc] [rows between 开始行 and 结束行])
+partition by        窗口函数在每个分组内独立计算，相当于group by
+rows between        定义窗口框架大小，控制参与计算的数据行范围
+
+rows between常见参数：
+num preceding：当前行数往前num行     num following：当前行数往后num行
+current row：当前行
+unbounded preceding：该窗口最前面的行(起点)     unbounded following：该窗口最后面的行(终点)
+
+
+脏读：一个事务读到了另一个未提交事务修改过的数据。如果那个事务回滚，那么第一个事务读到的数据就是无效的
+不可重复读：一个事务读到了另一个已提交事务修改过的数据。如在一个事务内，多次读取同一数据，由于其他事务的修改并提交，导致两次读取的结果不一致
+幻读：在一个事务内，多次查询同一个范围的数据，由于其他事务的插入或删除操作，导致两次查询的结果集数量不一致
+
+事务级别：读未提交(read uncommited)，读已提交(read commited)，可重复读(repeatable read)，串行化(serializable)
+mysql默认使用repeatable read，通过MVCC(多版本并发控制)实现了部分避免幻读
+
+select @@transaction_isolation;     查询事务级别
+set session transaction isolation level 事务级别;      设置当前会话的事务级别
+set global transaction isolation level 事务级别;       设置之后创建的所有新会话的事务级别(不影响已经创建的会话)
+
+事务的ACID四大特性：原子性，一致性，隔离性，持久性
+
+
+主键索引(primary)用于聚集索引，常规索引(index)用于二级索引
+唯一索引(unique)用于防止值重复(允许null值)，全文索引(fulltext)查找比较文本中的关键词
+
+聚集索引的节点是主键，叶子节点保存主键对应的整行数据
+二级索引的节点自由选择，叶子节点保存节点值对应的主键
+
+InnoDB默认有且只有一个聚集索引，默认没有二级索引
+如果表定义了主键，主键成为聚集索引
+如果没有主键，第一个非空唯一索引(unique not null)被用作聚集索引
+如果都没有，InnoDB会创建一个db_row_id(bigint(6字节)的自增id)的隐藏字段作为聚集索引
+
+当WHERE条件中的列没有索引时，mysql会进行全表扫描，一行一行地查找数据
+通过二级索引查询时，如果已经包含了要查找的所有信息，则会直接返回数据
+若有未查找到的数据，则会进行回表查询，通过查找到的主键进入聚集索引查找整行数据，会减慢查询速度
+
+create [unique,fulltext] index index_name on table_name(col1,col2,...);     创建对应col的索引
+create index index_name on table_name(col1(n),col2(m),...);     创建前缀索引(用于较长的字符串列)
+drop index index_name on table_name;
+
+范围查询(不取等)会截断后续索引列的使用(破坏了数据的有序性)，而范围查询(取等)不会
+
+
+联合索引应将等值索引放在前，范围索引放在后，可以快速过滤数据
+联合索引的实质是先按照第一索引排序id，同序按照第二索引排序id，因此不能跳过前索引，需要满足最左前缀原则
+
+最左前缀原则：联合索引查询数据时，必须遵循从左到右的顺序查询，不能跳过任何列查询后面的列
+如果存在联合索引的最前列，即使where没有查询前列，mysql优化器会自动调整判断顺序使其尽量符合最左前缀原则
+
+常见的索引无法使用问题：
+联合索引没有使用最前列在where或其他语句中进行了运算操作，开头模糊查询(使用全文索引fulltext)，
+字符串查询没加引号，or两侧有一个非索引字段(使用union)，mysql评估使用索引比全表扫描更慢
+
+where严格遵循最左前缀原则，group by和order by不完全遵循最左前缀原则
+
+ICP(索引条件下推)：当索引被截断时，可以在存储引擎层(原为服务层)逐行过滤剩下的行(包括之后的范围查询)
+
+use index(index) mysql自愿是否使用该索引   ignore index(index) mysql忽略该索引   force index(index) mysql必须使用该索引
+
+
+性能分析：
+show [session,global] status like "com_______(7个下划线)"  显示当前会话或所有会话的增删改查的次数
+
+show full processlist;      查询当前所有正在运行的mysql程序
+
+慢查询日志会记录所有超过慢时间且扫描记录数不小于设定行数的所有sql语句的相关信息，默认不记录管理语句和不使用索引查找的语句
+show variables like "slow_query_log";     检测慢查询日志是否开启(默认不开启，在/etc/my.cnf中配置以下语句开启)
+slow_query_log=1(开启慢查询日志)   long_query_time(慢时间，默认10秒，精度可以到微秒)   min_examined_row_limit(扫描行数)
+log_show_admin_statements=1(记录执行较慢的管理语句)   log_queries_not_using_indexes=1(记录执行较慢的不使用索引查找的语句)
+
+
+select @@have_profiling;    检测profile性能分析是否开启
+set [global] profiling=1    开启profile功能
+show profiles;    查看当前会话所有运行语句的耗时时间
+
+explain中：
+id：查询中执行select子句或操作表的顺序(id相同从上到下执行，id不同值越大越先执行)
+type性能从好到差依次为：None(从索引中直接获取结果，无需访问表数据)，system(访问系统表)，const(主键或唯一索引的等值查询)，
+      eq_ref(多表JOIN时，使用主键或唯一索引关联)，ref(非唯一索引的等值查询)，range(索引范围查询)，index(索引全扫描)，all(全表扫描)
+key：使用的索引       key_len：使用的索引的实际使用长度
+rows：mysql预计要查询的行数
+filtered：返回结果行数占读取行数的百分比
+extra：额外信息，包含filesort，using index condition，using index(存储引擎层过滤)，using where(服务层过滤)
+
+filesort：MySQL在无法使用索引进行排序时，采用的排序操作
+using index condition：查找使用了索引，但是需要回表查询数据
+using index：使用了覆盖索引，直接返回有序数据     using where：查询的列未被索引完全覆盖或where条件中有除了索引条件之外的其他条件
+
+MRR(多范围读取优化)：范围查询时先将范围排序，再按照排序后的范围读取数据
+
+松散索引扫描：优化group by操作，按索引顺序扫描，遇到不同的值时再分组。若含有非索引列，则依旧需要在服务层过滤后再分组
+
+
+主键优化：使用短主键长度，使用自增主键(auto_increment)，尽量不使用uuid或其他非顺序主键(防止叶分裂)，避免删除主键(防止叶合并)
+
+insert优化：按主键顺序插入，一次批量插入((a1,b1),(a2,b2),...)，手动提交事务
+如果一次性需要插入大量数据，使用load：
+1.连接数据库时，加上参数 --local-infile (连接服务器时，需要加载本地的文件)
+2.set global local_infile=1; (打开从本地加载文件导入数据的开关)  (不同属性的分隔符)              (不同行的分隔符)
+3.load data local infile "文件地址" into table "table_name" fields terminated by "分隔符" lines terminated by "分隔符";
+
+update/delete优化：为条件字段添加对应索引，防止行排他锁升级成表排他锁(innoDB的行锁是针对索引加的锁，并且该索引不能失效)
+
+group by优化：将using temporary(临时表)变成using index
+1.使用索引字段分组
+2.符合最左前缀原则(where的字段也算入索引字段)
+
+order by优化：将filesort变成using index
+1.使用覆盖索引，数据库直接按照索引顺序读取数据
+2.为常用的倒序排序字段设置倒序索引
+
+limit优化：减短搜索到对应行数的时间
+1.使用order by来保证返回顺序(数据库内部行无序，每次返回可能不同)
+2.使用索引快速查找到对应首行的主键
+3.使用子查询获取对应行数据
+select table1.* from table1 join (select id from table2 order by id limit 1000000,10) table2 on table1.id=table2.id;
+
+count优化：innoDB在count时会一行行读出到服务层累加计数-->在外部程序(如redis)中额外提前计数exists
+count(*)>=count(数字)(给每一行一个数字，再计数有多少行有这个数字)>count(id)>count(col)
+
+in优化：使用in时，mysql会将它转换为多个or条件的组合。如果子查询返回多条记录，mysql会对这些记录进行多次查询
+in查询会先执行子查询，生成临时表，针对子查询的临时结果表进行遍历匹配
+exists对外部表使用循环，每次循环都会检查是否符合exists中的select语句，找到第一个匹配的值就直接返回 
+in在内部表和外部表都可以使用索引，exists只在内部表中使用索引
+如果两个表中一个大一个小，内部表大的情况下使用exists，子查询表小的情况下使用in，需要连接数据时用join
+
+
+show [session,global.] variables (like ...);     查看所有系统变量
+select @@[session,global.]系统变量名               查看指定系统变量的值
+set [session,global] 系统变量名=value
+
+
+create trigger trigger_name          创建触发器
+before/after insert/update/delete
+on table_name for each row           innoDB只支持行级触发器
+begin
+    sql语句;
+end
+
+user()  当前用户
+concat(str1,str2,...)   将多个参数组合为一个字符串
+delimiter 符号   设置临时结束符
+if ... then signal sqlstate "45000" set message_text="..."; endif;  返回错误以及错误文本
+
+
+LBCC(基于锁的并发控制)
+锁的粒度从大到小：全局锁，表级锁，行级锁
+
+flush tables with read lock;    建立全局锁，整个数据库只能读取数据
+mysqldump -uroot -p --databases(备份单个数据库) database_name > name.sql --all-databases(备份所有数据库) > name.sql
+mysql -uroot -p [databases_name](还原到单个数据库) > name.sql
+mysqldump 使用--signal-transaction可以实现不加锁的一致性数据备份(快照读)
+
+unlock tables;    释放锁
+
+
+表级锁：表锁，元数据锁，意向锁
+表锁：表共享(S)读锁(read)使自己与其他客户端都不能写，但可以读；表排他(X)写锁(write)使其他客户端不能读且不能写，只有自己能读与写
+lock tables table_name read/write;
+
+元数据锁(MDL)：维护表元数据(表结构，索引，视图等)的一致性。由系统自动控制，无需显式使用
+当读表时，会加MDL读锁；当增删改表时，会加MDL写锁；当更改表结构时，会加MDL排他锁。MDL读锁与写锁互相兼容，都与MDL排它锁互斥
+select * from performance_schema.metadata_locks;    查看当前所有元数据锁
+lock_duration的值有：statement(当语句执行完成时结束)，transaction(当事务执行完成时结束)，explicit(需要显式解锁)
+
+意向锁：用于记录当前表有哪些行锁，设置表锁时通过检测是否与意向锁兼容来判断是否成功。由系统自动控制，无需显式使用
+当对某行加共享锁(S)时，会先自动加意向共享锁(IS)；当对某行加排他锁(X)时，会先自动加意向排他锁(IX)。IS与S兼容，与X互斥；IX与其他锁都互斥
+select * from performance_schema.data_locks;    查看当前所有意向锁与行锁
+
+
+innoDB的数据基于索引组织，行锁通过对索引上的索引项加锁实现
+
+行级锁：记录锁，间隙锁，临键锁，插入意向锁
+记录锁：锁定单行记录，防止其他事务进行update和delete。在RC(read commited)和RR(repeatable read)下都支持
+insert会对即将插入行加插入意向锁，update和delete会自动对处理行加临键锁
+select默认不加任何锁，for share 加共享锁(S)，for update 加排他锁(X)
+for update nowait 如果被锁，立即返回     for update skip locked 跳过被锁定的行
+
+
+默认情况下，innoDB在RR中运行，会使用临键锁进行搜索和索引扫描，以防止幻读
+1.唯一索引进行等值匹配时，会自动优化成行排他锁
+2.非唯一索引进行等值匹配时，从最后一个满足条件的值开始加间隙锁
+3.非唯一索引等值查询不存在的值，会对查询区间加临键锁
+4.通过索引进行范围查询，会对多个区间加临键锁
+5.不通过索引检索数据，将会对表中所有记录加锁，升级为表临键锁
+
+间隙锁：锁定索引记录间隙(不含该记录)，确保索引记录间隙不变，防止其他事务在这个间隙进行insert产生幻读。由系统自动控制，无需显式使用。在RR下支持
+间隙锁相互兼容，唯一目的是为了防止其他事务插入间隙
+
+临键锁：行锁与间隙锁结合，锁住该记录，并锁住与前一条记录之间的间隙。由系统自动控制，无需显式使用。在RR下支持
+
+插入意向锁：属于间隙锁的一种，用于在插入行之前检查间隙是否被其他事务锁住。由系统自动控制，无需显式使用。在RR下支持
+插入意向锁相互兼容，与间隙锁和临键锁互斥
+
+
+InnoDB存储结构：表空间(.idb)->段(数据段，索引段，回滚段(存储undo日志))
+->区(innoDB空间分配的最小单位)->页(索引页和undo页等，innoDB磁盘管理的最小单位)->行(实际的数据存储单元)
+
+
+mysql内存架构：buffer pool(缓冲池)，change buffer(更改缓冲区)，自适应哈希索引，log buffer(日志缓冲区)
+buffer pool：缓存磁盘经常操作数据，增删改查时先操作缓冲池中的数据，若未存入buffer pool，则会读取并存入buffer pool，减少磁盘IO
+
+change buffer：增删改数据(非唯一二级索引)时，若这些数据没有存入buffer pool，则会在未来数据被读取时，再将数据合并到buffer pool中(磁盘中的数据依旧是旧的)
+当增删改唯一或主键索引时，需要检测数据是否唯一，实时查看数据页
+
+自适应哈希索引：innoDB引擎在某些索引值被频繁访问时，会在buffer pool中自动为其创建哈希索引，加快查询速度
+
+log buffer：保存要写入到磁盘中的log日志数据(redo log buffer)，会定期刷新到磁盘中
+innodb_flush_log_at_trx_commit中，默认为1。0：每秒将日志写入并刷新到磁盘一次；1：每次事务提交时写入并刷新到磁盘；2：0+1
+
+
+mysql硬盘架构：系统表空间，个体表空间，通用表空间，临时表空间，撤销表空间(存储undo log)，双写缓冲区，redo log(重做日志)
+redo log：由内存中的redo log buffer(重做日志缓冲)和硬盘中的redo log file(重做日志文件)组成。发生错误时，进行数据恢复
+
+
+mysql系统架构：文件系统层，存储引擎层，服务层(server)，客户端连接层
+服务逻辑：客户端输入sql语句->服务层连接管理来自客户端的网络连接，分析器分析语法错误，优化器生成执行计划，执行器协调存储引擎执行过程
+->存储引擎过滤(where)并读取(回表查询)返回行数据给服务层->服务层对数据进行过滤(where)/排序(order by)/分组(limit)->格式化数据返回客户端
+
+
+WAL(日志先行)在保存数据到硬盘前，会先将相关日志写入硬盘
+undo log(回滚日志)：更新buffer pool中的数据页前，会将旧数据行(包含隐藏字段)生成undo log记录，然后生成redo log，
+将redo log保存在log buffer中，依据后台线程不定时写到硬盘的undo log文件中，方便回滚
+
+insert产生的undo log日志只在回滚时需要，事务提交后会被立即删除
+update和delete产生的undo log日志在回滚和快照读时都需要，不会立即被删除
+
+
+redo log(重做日志)：将数据页的数据更改写入redo log中，实时写入，保存在log buffer中
+在事务提交时刷入硬盘的redo log文件(有多份)中，当数据库意外重启时可以找到历史操作记录
+
+redo log内的数据是有顺序写入的，buffer pool内的数据分散在硬盘各处，顺序写效率为随机写的几十倍
+
+
+binlog(二进制日志)：server层会将历史上的所有变更操作(DDL和DML语句)记录在硬盘上的binlog文件中，方便恢复历史数据与主从复制。当事务提交时写入，可能因断电未写入
+记录binlog的格式：row(默认)，statement，mixed     show variables like "%binlog_format%"
+row：基于行的日志记录，记录每一行的数据变更
+statement：基于sql语句的日志记录，记录对数据进行修改的sql语句
+mixed：混合了row和statement两种格式，默认使用statement，某些特殊情况会自动切换为row
+
+redo log是环形写的，写满一份会写入下一份，写入数据多时会把起始数据替换，只能恢复部分最近数据，并且只适用于innoDB引擎
+binlog记录了所有数据，位于server层，适用于所有引擎
+
+为了解决redo log和binlog因写入时机不同而导致的值不一致问题，innoDB使用两阶段提交方案，将redo log的写入分为了prepare和commit阶段
+先将redo log刷入硬盘中(设置状态为prepare)，再将binlog刷入硬盘，最后保存redo log状态(设置状态为commit)
+重启数据时，如果redo log状态为prepare，则检查是否有对应的binlog，没有则回滚事务，有则重做事务并提交
+
+
+MVCC(多版本并发控制)会维护一个数据的多个版本，使读写操作没有冲突。通过每条记录中的三个隐藏字段，undo log版本链和readview实现
+当前读(记录锁+间隙锁)：读取的是数据的最新版本，通过锁来防止其他并行事务修改当前数据
+快照读(MVCC)：读取的是数据的可见版本，有可能是历史数据，不加锁
+
+RC在每次select都生成一个快照读，RR开启事务只在第一个select产生快照读
+read uncommited直接改原数据(不使用MVCC)，serializable将快照读退化为当前读(直接使用表锁)
+insert，update和delete检查约束依旧使用当前读，不使用快照读
+
+三个隐藏字段：db_trx_id，db_roll_rtp，db_row_id
+db_trx_id(最近修改事务ID)：记录插入这条记录或最后一次修改改记录的事务ID
+db_roll_rtp(回滚指针)：指向这条记录的上一个版本，用于配合undo log
+db_row_id(隐藏主键)：如果表结构没有指定主键，会生成该隐藏字段
+
+undo log版本链：不同事务或相同事务对同一条记录进行修改，会使该记录的undo log生成一条记录版本链表，链表头部是最新的旧数据，尾部是最早的旧数据
+
+readview(读视图)：在快照读时创建，是sql执行时MVCC提取数据的依据，创建后数据不会被更改，有四个核心字段：
+m_ids：当前活跃的事务id集合
+min_trx_id：最小活跃(未提交)事务id
+max_trx_id：预分配事务id，值为当前最大事务id + 1
+creator_trx_id：readview创建者的事务id
+
+版本链数据访问规则(trx_id为创建该版本记录的事务id，也是该版本undo log本条记录的db_trx_id的值)
+1.trx_id == creator_trx_id              可访问，说明数据由当前事务更改
+2.trx_id < min_trx_id                   可访问，说明该事务已经提交
+3.trx_id >= max_trx_id                  不可访问，说明该事务在创建readview后才开启
+4.min_trx_id <= trx_id < max_trx_id 且 trx_id 在 s_ids 中     不可访问，说明该事务在创建readview时未提交
+
+因为RR级别只有一个readview，每次读取的版本链都相同，而自己修改的数据creator_trx_id为自己，保证了可重复读
+快照读解决了幻读，但当前读没有完全解决幻读
+
+undo log实现原子性，redo log+undo log+binlog实现一致性，LBCC+MVCC实现隔离性，redo log和binlog实现持久性
+LBCC近似解决了写幻读，MVCC解决了读幻读
+
+
+mysql安装完成后会自带四个默认数据库：mysql，information_schema，performance_schema，sys
+mysql：存储mysql服务器正常运行所需要的各种信息(时区，主从，用户，权限等)
+information_schema：提供了访问数据库元数据的各种表和视图，包括数据库，表，字段类型和访问权限等
+performance_schema：为mysql服务器运行时状态提供了一个底层监控功能，主要用于收集数据库服务器性能参数，锁等
+sys：包含了一系列方便DBA(数据库管理员)和开发人员利用performance_schema进行性能调优和诊断的视图
+
+
+mysqlbinlog [-d database 只列出指定数据库的相关操作] [-v 显示基于行的日志记录] [-w 显示基于行的日志记录，并输出注释信息] binlog.XXXXXX
+
+
+主从复制：主库将binlog传给从库，从库对这些binlog重新执行(也称重做)，使得主库和从库的数据保持同步
+主从复制使主库出现问题时可以切换到从库提供服务，可以实现读写分离降低主库访问压力，可以在从库执行备份避免影响主库服务
+
+主从复制的原理：
+1.主库在事务提交时，将数据变更记录在binlog中
+2.从库读取主库的binlog，写到从库的relay log(中继日志)中
+3.从库重做中继日志中的事件，改变自身数据
+
+
+分库分表：将数据分散存储，使单一数据库/表的数据量变小来缓解单一数据库的性能问题，提升数据库性能
+垂直拆分将结构拆分，水平拆分将数据拆分。一般使用垂直分库与水平分表
+
+
+读写分离：将数据库的读写分开，主库提供写操作，从库提供读操作，减轻单台数据库的压力
+一般采用多主多从的方式实现读写分离
+
+
+set sql_safe_updates=1    禁止不带where的update和delete的语句

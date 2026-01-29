@@ -1,0 +1,152 @@
+git是linus开源的分布式版本管理工具，每个人的电脑上都是一个完整的版本库，因此拷贝版本时不需要联网
+多人协作时只需将各自的修改推送给对方，就能互相看到并拷贝对方的修改
+
+git有一个中心服务器，它的地位与每个人的电脑一致，仅仅只是为了使交换不同人的修改代码更加方便
+
+git的特点：速度快，对非线性开发模式的强力支持(允许并行开发)，完全分布式，多数命令与linux相同
+
+
+git将数据看做小型文件系统的一组快照，每次提交更新时git都会将当前的全部文件制作分别一个快照并保存这个快照的索引，称为快照流工作方式
+如果文件没有修改，git将不再重新存储该文件，而是保留一个指向之前存储的文件的链接
+
+每一个commit对象指向一个tree对象，tree对象分别指向该commit中不同文件的快照
+
+
+git bash在启动时会将自己视为一个"登录shell"，会按照一个严格的顺序去寻找并加载配置文件
+1.~/.bash_profile  2.~/.bash_login  3.~/.profile
+只要找到并加载了其中一个，它就会停止寻找，并且不会自动加载 ~/.bashrc 文件
+
+~/.bash_profile, ~/.profile：主要用于登录shell。
+指通过用户名/密码登录linux系统，或者用SSH远程连接。
+它们通常用来设置环境变量，启动程序等一次性的、全局的设置。
+
+~/.bashrc：主要用于交互式非登录shell。指打开一个终端窗口。
+通常用来设置别名(alias)、shell函数等针对每个终端窗口的，可自定义的设置。
+
+
+gitbash支持大部分linux指令
+
+
+git config --global user.name "username"    设置用户名
+git config --global user.email "useremail"  设置邮箱地址
+
+解决中文乱码：
+1.git config --global core.quotepath false
+2.在$(git_home)/etc/bash.bashrc 最后加入expore LANG="zh_CN.UTF-8"  expore LC_ALL="zh_CN.UTF-8"
+
+
+部分指令的参数非常多，可以通过设定别名来简单调用指令
+vim ~(意为git所在目录)/.bashrc打开文件，以alias开头，后跟别名="指令与参数"
+source ~/.bashrc   刷新.bashrc文件，每次写入.bashrc文件后都需要刷新
+
+
+git的结构分为远程仓库(remote)，本地仓库(repository)，缓存区(index)，工作区(workspace)
+
+git init   	 初始化当前打开目录为本地git仓库
+
+.git目录是git仓库的核心，包含：
+objects目录：提交历史，存储所有版本历史
+refs目录：分支和标签，存储分支信息
+remotes目录：远程仓库，存储远程仓库链接
+index文件：暂存区，存储暂存区状态
+config文件：配置信息，存储仓库配置
+head文件：head指针，存储当前分支指针
+
+git工作目录(当前目录除了.git外的目录)根据文件的修改会存在不同状态，会随着git的命令发生变化：
+新创建文件状态为未跟踪(untracked)，修改已有文件状态为未暂存(unstaged)
+
+可以使用head(@是head的别名)指向本地库最新提交，~为上一个提交
+
+
+git add ./file 将所有/指定文件从工作区添加到缓存区，状态为已缓存(staged)
+git commit -m(message) "注释"  将缓冲区所有文件提交到本地库并清空，变成了一条具有独立id的提交记录，commitid是经过哈希后得到的值
+
+git status    查看当前目录的状态
+git log       查看本地库全局提交历史
+[--all 显示所有分支] [--graph 以图的形式显示] [--pretty=oneline 只显示提交id和注释] [--abbrev-commit 更简短的输出提交id] [-p 显示每次提交的差异]
+
+git diff [--cache 查看已暂存的更改] [file]  查看未暂存的更改
+
+git reset commitid  回退版本
+--soft：仅移动指针到对应提交id，相当于撤回了commit。用于重新提交
+--mixed：默认选项，移动指针到对应提交id，清空暂存区。用于重新拆分提交
+--hard：移动指针到对应提交id，清空暂存区，将对应的内容替换工作区内容。用于回到提交时的完全一致状态
+
+git reflog   显示历史操作
+在git手动或自动垃圾回收(GC)清理悬空对象前，可以使用reflog中的commitid进行reset来恢复原版本
+
+.gitignore中可以设置无需纳入git管理的文件，通常设置日志文件或编译过程中临时产生的文件等
+*.*代表所有文件，**代表所有文件和目录
+
+
+分支可以将文件从主线上分离开进行其他的操作，以免影响主线文件。head指向所在当前分支，默认分支为master
+git branch [-a 列出所有本地和远程分支] [-v 显示详细信息] 显示已有分支(绿色为当前分支)   
+git branch [-d 删除指定分支(如果已合并)] [-D 强制删除分支(即使未合并)] branch_name  创建分支
+
+git checkout [-b 若没有该分支则创建] branch_name  切换分支
+
+git merge [--allow-unrelated-histories 强制合并不相关的分支历史] -m(message) branch_name 将branch_name合并到当前分支中，不会修改历史记录，会显示所有分支的提交和合并点。一般都合并到master中
+如果两个分支已经位于同一分支上，则再次合并会进行快进合并，直接取该分支上两个分支指针最新的提交记录，并将较晚的分支指针指向较新指针的提交记录
+
+git rebase branch_name  将当前分支变基到branch_name，重写历史，使得提交历史更加线性。此时再进行原先的merge会快进合并，不会出现分支
+
+如果两个分支同时修改了一个文件，合并会出现冲突，此时会在文件不同处同时存储两个分支的对应修改内容，由用户手动选择内容留存
+
+
+可以通过远程仓库地址或ssh方式连接远程仓库
+
+通过ssh方式连接远程仓库，需要创建与配置远程仓库公私钥
+ssh-keygen -t rsa       生成rsa公钥，默认保存在~/.ssh目录下，可以更改保存位置
+cat ~/.ssh/id_rsa   查看rsa私钥       cat ~/.ssh/id_rsa.pub   查看rsa公钥(进入github设置同样的公钥)
+ssh -T git@xxx.com      检测是否与远程仓库连接成功，github为github.com
+
+git remote [-v 详细信息]   显示已创建远程仓库
+git remote add name(远程仓库名称，一般为origin) address(远程仓库地址)  创建远程仓库别名
+git remote remove name    删除远程仓库
+
+git push [-f force 强制覆盖] remote_name local_branch_name[:remote_branch_name]    
+将分支推送到远程仓库，如果remote_branch_name与local_branch_name相同，可以不写:remote_branch_name
+
+git clone remote_address [dir 默认为打开目录] 从远程库中克隆所有代码到目录，remote_address需要为地址，不能是别名
+其他用户可以clone，但是push需要在远程仓库中设置允许权限
+
+git fetch [remote_name] [branch_name] 从远程库抓取分支到本地库，不进行任何的合并动作，一般需要后跟git merge合并新分支
+git pull [--allow-unrelated-histories 强制合并不相关的分支历史] [remote_name] [branch_name] 从远程库拉取分支到本地库，自动进行合并，常用
+
+
+stash暂存所有当前文件，切换分支时需要暂存/提交
+git stash [-u 包含未跟踪文件] [-a 包含所有文件] save "注释"    临时暂存工作进度，清空工作区，等需要时再恢复。只保存已跟踪文件的修改
+git stash list    列出所有暂存的更改。stash@{num}表示暂存的编号
+
+git stash apply   恢复最新暂存(不删除)
+git stash pop     恢复最新暂存并删除(从列表中移除)
+
+git stash drop    删除最新暂存
+git stash clear   删除所有暂存
+
+
+worktree可同时检出多个分支。无需暂存，直接在不同目录工作
+git worktree add [-b 如果分支不存在，创建并检出] path branch_name    在path创建一个新的工作树，检出到指branch_name
+git worktree list  列出所有工作树
+
+git worktree remove path   删除path中的工作树
+
+stash和worktree都只在本地存在，不会同步到远程仓库
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
