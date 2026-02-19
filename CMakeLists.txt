@@ -3,7 +3,7 @@
 cmake_minimum_required(VERSION 3.28)        # 指定使用cmake的最低版本
 project(CXX_text C CXX)                     # 设置项目名称与可用语言列表，默认支持全部语言
 set(CMAKE_CXX_STANDARD 23)                  # 指定使用的C++标准版本，默认为C++98版本
-set(EXECUTABLE_OUTPUT_PATH "../")           # 指定可执行文件的创建位置
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/output)           # 指定可执行文件的创建位置
 set(program "C++ program" "C++ knowledge")  # 设置变量，默认为string类型，使用${变量}来取得变量值
 set(p "C++ program")
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
